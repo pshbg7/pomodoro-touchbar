@@ -22,6 +22,7 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
     private let startPauseIdentifier = NSTouchBarItem.Identifier("com.pomodoro.startPause")
     private let skipIdentifier = NSTouchBarItem.Identifier("com.pomodoro.skip")
     private let resetIdentifier = NSTouchBarItem.Identifier("com.pomodoro.reset")
+    private let continueIdentifier = NSTouchBarItem.Identifier("com.pomodoro.continue")
     private let controlStripIdentifier = NSTouchBarItem.Identifier("com.pomodoro.controlStrip")
     
     // References to Touch Bar items for updates
@@ -46,16 +47,20 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
             startPauseIdentifier,
             skipIdentifier,
             resetIdentifier,
+            continueIdentifier,
             controlStripIdentifier
         ]
         
-        touchBar?.defaultItemIdentifiers = [
-            timerLabelIdentifier,
-            .flexibleSpace,
-            startPauseIdentifier,
-            skipIdentifier,
-            resetIdentifier
-        ]
+        // Update item identifiers based on state
+        updateTouchBarItems()
+        
+        // Observe completion modal to update Touch Bar
+        timerManager.$showCompletionModal
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.updateTouchBarItems()
+            }
+            .store(in: &cancellables)
         
         // Setup control strip item (always visible)
         setupControlStripItem()
@@ -131,6 +136,17 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
                 action: #selector(resetTapped)
             )
             button.bezelColor = .systemRed
+            item.view = button
+            return item
+            
+        case continueIdentifier:
+            let item = NSCustomTouchBarItem(identifier: identifier)
+            let button = NSButton(
+                title: "Continue",
+                target: self,
+                action: #selector(continueTapped)
+            )
+            button.bezelColor = .systemGreen
             item.view = button
             return item
             
@@ -276,6 +292,31 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
     
     @objc private func resetTapped() {
         timerManager?.reset()
+    }
+    
+    @objc private func continueTapped() {
+        timerManager?.continueAfterCompletion()
+    }
+    
+    private func updateTouchBarItems() {
+        guard let timerManager = timerManager else { return }
+        
+        // Show Continue button when completion modal is shown, otherwise show normal controls
+        if timerManager.showCompletionModal {
+            touchBar?.defaultItemIdentifiers = [
+                timerLabelIdentifier,
+                .flexibleSpace,
+                continueIdentifier
+            ]
+        } else {
+            touchBar?.defaultItemIdentifiers = [
+                timerLabelIdentifier,
+                .flexibleSpace,
+                startPauseIdentifier,
+                skipIdentifier,
+                resetIdentifier
+            ]
+        }
     }
 }
 

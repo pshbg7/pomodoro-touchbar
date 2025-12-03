@@ -8,6 +8,7 @@
 import Foundation
 import Combine
 import AVFoundation
+import AppKit
 
 class PomodoroTimerManager: ObservableObject {
     // Timer states
@@ -22,10 +23,65 @@ class PomodoroTimerManager: ObservableObject {
     @Published var timeRemaining: TimeInterval = 25 * 60 // 25 minutes in seconds
     @Published var isRunning: Bool = false
     @Published var isFullScreen: Bool = false
+    @Published var showCompletionModal: Bool = false
+    @Published var completionMessage: String = ""
+    @Published var showSettings: Bool = false
     
-    // Timer constants
-    private let workDuration: TimeInterval = 25 * 60 // 25 minutes
-    private let breakDuration: TimeInterval = 5 * 60  // 5 minutes
+    // Pomodoro sequence tracking
+    @Published var pomodoroCount: Int = 0 // Current pomodoro in sequence
+    @Published var isLongBreak: Bool = false // Whether current break is a long break
+    
+    // Customizable timer durations (in minutes, converted to seconds when used)
+    @Published var workDurationMinutes: Int = 25 {
+        didSet {
+            if currentState == .working && !isRunning {
+                timeRemaining = TimeInterval(workDurationMinutes * 60)
+            }
+        }
+    }
+    
+    @Published var breakDurationMinutes: Int = 5 {
+        didSet {
+            // Ensure minimum break duration is 5 minutes
+            if breakDurationMinutes < 5 {
+                breakDurationMinutes = 5
+            }
+            if currentState == .breakTime && !isRunning && !isLongBreak {
+                timeRemaining = TimeInterval(breakDurationMinutes * 60)
+            }
+        }
+    }
+    
+    @Published var longBreakDurationMinutes: Int = 15 {
+        didSet {
+            if longBreakDurationMinutes < 5 {
+                longBreakDurationMinutes = 5
+            }
+            if currentState == .breakTime && !isRunning && isLongBreak {
+                timeRemaining = TimeInterval(longBreakDurationMinutes * 60)
+            }
+        }
+    }
+    
+    @Published var pomodorosBeforeLongBreak: Int = 3 {
+        didSet {
+            if pomodorosBeforeLongBreak < 1 {
+                pomodorosBeforeLongBreak = 1
+            }
+        }
+    }
+    
+    // Computed properties for durations in seconds
+    private var workDuration: TimeInterval {
+        TimeInterval(workDurationMinutes * 60)
+    }
+    
+    private var breakDuration: TimeInterval {
+        if isLongBreak {
+            return TimeInterval(longBreakDurationMinutes * 60)
+        }
+        return TimeInterval(breakDurationMinutes * 60)
+    }
     
     // Timer and sound
     private var timer: Timer?
@@ -89,6 +145,8 @@ class PomodoroTimerManager: ObservableObject {
     
     func reset() {
         pause()
+        pomodoroCount = 0
+        isLongBreak = false
         resetToWork()
         isFullScreen = false
     }
@@ -99,12 +157,18 @@ class PomodoroTimerManager: ObservableObject {
         // Switch to next state
         switch currentState {
         case .working:
-            // Move to break
+            // Move to break - determine if long break
+            pomodoroCount += 1
+            isLongBreak = pomodoroCount >= pomodorosBeforeLongBreak
             currentState = .breakTime
             timeRemaining = breakDuration
             isFullScreen = false
         case .breakTime:
-            // Move to work
+            // Move to work - reset count if was long break
+            if isLongBreak {
+                pomodoroCount = 0
+                isLongBreak = false
+            }
             resetToWork()
             isFullScreen = true
         case .idle:
@@ -124,34 +188,80 @@ class PomodoroTimerManager: ObservableObject {
     }
     
     private func timerCompleted() {
+        // Stop the timer immediately - do not auto-continue
         pause()
+        
+        // Play completion sound
         soundManager.playCompletionSound()
         
-        // Switch to next state
+        // Show completion modal - user MUST confirm to continue
+        // Timer will remain stopped until user interacts
         switch currentState {
         case .working:
-            // Work session complete, start break
-            currentState = .breakTime
-            timeRemaining = breakDuration
-            isFullScreen = false
+            // Work session complete - increment pomodoro count
+            pomodoroCount += 1
             
-            // Auto-start break after 1 second
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-                self?.start()
+            // Determine if next break should be long break
+            let shouldTakeLongBreak = pomodoroCount >= pomodorosBeforeLongBreak
+            
+            if shouldTakeLongBreak {
+                isLongBreak = true
+                completionMessage = "POMODORO \(pomodoroCount) COMPLETE\n\nLONG BREAK: \(longBreakDurationMinutes) MINUTES"
+            } else {
+                isLongBreak = false
+                completionMessage = "POMODORO \(pomodoroCount) COMPLETE\n\nBREAK: \(breakDurationMinutes) MINUTES"
+            }
+            
+            showCompletionModal = true
+            
+            // Bring app to front
+            DispatchQueue.main.async {
+                NSApplication.shared.activate(ignoringOtherApps: true)
             }
             
         case .breakTime:
-            // Break complete, start work
-            resetToWork()
-            isFullScreen = true
+            // Break complete - reset pomodoro count if it was a long break
+            if isLongBreak {
+                pomodoroCount = 0
+                isLongBreak = false
+            }
             
-            // Auto-start work after 1 second
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-                self?.start()
+            completionMessage = "BREAK OVER\n\nSTART POMODORO \(pomodoroCount + 1)"
+            showCompletionModal = true
+            
+            // Bring app to front
+            DispatchQueue.main.async {
+                NSApplication.shared.activate(ignoringOtherApps: true)
             }
             
         case .idle:
             break
+        }
+    }
+    
+    // Called when user confirms to continue after timer completion
+    func continueAfterCompletion() {
+        // Only proceed if modal is showing (prevents accidental calls)
+        guard showCompletionModal else { return }
+        
+        showCompletionModal = false
+        
+        // Switch to next state
+        switch currentState {
+        case .working:
+            // Move to break (short or long)
+            currentState = .breakTime
+            timeRemaining = breakDuration
+            isFullScreen = false
+            
+        case .breakTime:
+            // Move to work
+            resetToWork()
+            isFullScreen = true
+            
+        case .idle:
+            resetToWork()
+            isFullScreen = true
         }
     }
     

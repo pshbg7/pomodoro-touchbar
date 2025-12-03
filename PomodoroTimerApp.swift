@@ -158,6 +158,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         showWindowItem.target = self
         menu.addItem(showWindowItem)
         
+        // Settings
+//        let settingsItem = NSMenuItem(title: "Settings...", action: #selector(showSettings), keyEquivalent: ",")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+        
         menu.addItem(NSMenuItem.separator())
         
         // Launch at Login
@@ -204,6 +209,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         // If no window exists, activate app to create one
         NSApp.activate(ignoringOtherApps: true)
+    }
+    
+    @objc private func showSettings() {
+        // Show settings window
+        NSApp.activate(ignoringOtherApps: true)
+        
+        // Show main window first
+        showMainWindow()
+        
+        // Trigger settings sheet
+        if let timerManager = timerManager {
+            timerManager.showSettings = true
+        }
     }
     
     // Public method to get timer manager for setup

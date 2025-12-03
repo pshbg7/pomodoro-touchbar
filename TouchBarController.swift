@@ -242,9 +242,12 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         // 1. Activate the app
         NSApp.activate(ignoringOtherApps: true)
         
-        // 2. Show the main window
-        if let window = NSApplication.shared.windows.first {
-            window.makeKeyAndOrderFront(nil)
+        // 2. Show the main window (only if it can become key)
+        for window in NSApplication.shared.windows {
+            if window.canBecomeKey {
+                window.makeKeyAndOrderFront(nil)
+                break
+            }
         }
         
         // 3. Toggle timer

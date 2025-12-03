@@ -7,7 +7,6 @@
 
 import Foundation
 import ServiceManagement
-import CoreServices
 
 class LaunchAtLoginHelper {
     static let shared = LaunchAtLoginHelper()
@@ -25,14 +24,16 @@ class LaunchAtLoginHelper {
             // Use modern SMAppService API
             return SMAppService.mainApp.status == .enabled
         } else {
-            // Fallback: check login items list
-            return isInLoginItems()
+            // For macOS 11-12, we'll use a simple approach
+            // Check if the app is registered (this is a simplified check)
+            // Note: Full support requires macOS 13+ for SMAppService
+            return false // Will be set when enabled
         }
     }
     
     func enable() -> Bool {
         if #available(macOS 13.0, *) {
-            // Use modern SMAppService API
+            // Use modern SMAppService API (macOS 13+)
             do {
                 try SMAppService.mainApp.register()
                 return true
@@ -41,8 +42,11 @@ class LaunchAtLoginHelper {
                 return false
             }
         } else {
-            // Fallback: use login items
-            return addToLoginItems()
+            // For macOS 11-12, provide user instructions
+            // The modern API requires macOS 13+, so we'll show a message
+            print("Launch at login requires macOS 13.0 or later for automatic setup.")
+            print("You can manually add the app to Login Items in System Preferences.")
+            return false
         }
     }
     
@@ -57,71 +61,10 @@ class LaunchAtLoginHelper {
                 return false
             }
         } else {
-            // Fallback: remove from login items
-            return removeFromLoginItems()
-        }
-    }
-    
-    // MARK: - Legacy Methods (for macOS < 13)
-    
-    private func isInLoginItems() -> Bool {
-        guard let loginItems = LSSharedFileListCreate(nil, kLSSharedFileListSessionLoginItems.takeUnretainedValue(), nil)?.takeRetainedValue() else {
+            // For macOS 11-12, user needs to manually remove from Login Items
+            print("Please remove the app from Login Items in System Preferences.")
             return false
         }
-        
-        let appURL = Bundle.main.bundleURL as CFURL
-        let loginItemsArray = LSSharedFileListCopySnapshot(loginItems, nil)?.takeRetainedValue() as? [LSSharedFileListItem]
-        
-        guard let loginItemsArray = loginItemsArray else {
-            return false
-        }
-        
-        for item in loginItemsArray {
-            if let itemURL = LSSharedFileListItemCopyResolvedURL(item, 0, nil)?.takeRetainedValue() {
-                // Compare CFURLs using CFEqual
-                if CFEqual(itemURL, appURL) {
-                    return true
-                }
-            }
-        }
-        
-        return false
-    }
-    
-    private func addToLoginItems() -> Bool {
-        guard let loginItems = LSSharedFileListCreate(nil, kLSSharedFileListSessionLoginItems.takeUnretainedValue(), nil)?.takeRetainedValue() else {
-            return false
-        }
-        
-        let appURL = Bundle.main.bundleURL as CFURL
-        LSSharedFileListInsertItemURL(loginItems, kLSSharedFileListItemBeforeFirst.takeUnretainedValue(), nil, nil, appURL, nil, nil)
-        
-        return true
-    }
-    
-    private func removeFromLoginItems() -> Bool {
-        guard let loginItems = LSSharedFileListCreate(nil, kLSSharedFileListSessionLoginItems.takeUnretainedValue(), nil)?.takeRetainedValue() else {
-            return false
-        }
-        
-        let appURL = Bundle.main.bundleURL as CFURL
-        let loginItemsArray = LSSharedFileListCopySnapshot(loginItems, nil)?.takeRetainedValue() as? [LSSharedFileListItem]
-        
-        guard let loginItemsArray = loginItemsArray else {
-            return false
-        }
-        
-        for item in loginItemsArray {
-            if let itemURL = LSSharedFileListItemCopyResolvedURL(item, 0, nil)?.takeRetainedValue() {
-                // Compare CFURLs using CFEqual
-                if CFEqual(itemURL, appURL) {
-                    LSSharedFileListItemRemove(loginItems, item)
-                    return true
-                }
-            }
-        }
-        
-        return false
     }
 }
 

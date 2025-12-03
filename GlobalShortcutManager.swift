@@ -38,9 +38,12 @@ class GlobalShortcutManager {
             // Activate the app
             NSApp.activate(ignoringOtherApps: true)
             
-            // Show the main window
-            if let window = NSApplication.shared.windows.first {
-                window.makeKeyAndOrderFront(nil)
+            // Show the main window (only if it can become key)
+            for window in NSApplication.shared.windows {
+                if window.canBecomeKey {
+                    window.makeKeyAndOrderFront(nil)
+                    break
+                }
             }
             
             // Toggle timer if it exists

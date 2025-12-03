@@ -192,13 +192,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     @objc private func showMainWindow() {
         // Show main window when menu bar item is clicked
-        if let window = NSApplication.shared.windows.first {
-            window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-        } else {
-            // If no window exists, create one
-            NSApp.activate(ignoringOtherApps: true)
+        // Find the main app window (skip status bar and other system windows)
+        for window in NSApplication.shared.windows {
+            // Only make key windows that can become key (excludes status bar windows)
+            if window.canBecomeKey {
+                window.makeKeyAndOrderFront(nil)
+                NSApp.activate(ignoringOtherApps: true)
+                return
+            }
         }
+        
+        // If no window exists, activate app to create one
+        NSApp.activate(ignoringOtherApps: true)
     }
     
     // Public method to get timer manager for setup
